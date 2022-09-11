@@ -1,0 +1,23 @@
+os:
+  time:
+    timezone: "Europe/Bucharest"
+    ntp:
+      server: changeme
+
+calico:
+  version: 3.24.1
+
+containerd:
+  version: latest
+  crictl:
+    version: 1.25.0
+
+kubernetes:
+  version: 1.25.0-00
+  upgrade: false
+  control_plane:
+    endpoint: changeme:6443
+  network:
+    lb_cidr: "changeme"
+    pod_network_cidr: "changeme"
+    service_cidr: "changeme"

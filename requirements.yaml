@@ -1,0 +1,7 @@
+collections:
+  - name: community.docker
+    version: 1.9.1
+  - name: community.general
+    version: 4.2.0
+  - name: community.kubernetes
+    version: 2.0.0

@@ -1,0 +1,21 @@
+os:
+  time:
+    timezone: "Europe/Bucharest"
+    ntp:
+      server: 10.69.0.1
+
+containerd:
+  version: latest
+  crictl:
+    version: 1.22.0
+
+
+kubernetes:
+  version: latest
+  control_plane:
+    endpoint: kubernetes.groot.tethryus.ro:6443
+  network:
+    lb_cidr: "10.69.64.0/18"
+    pod_network_cidr: "10.69.128.0/18"
+    service_cidr: "10.69.192.0/18"
+  

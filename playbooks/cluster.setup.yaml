@@ -1,0 +1,646 @@
+---
+
+- name: Node - Setup
+  hosts: kubernetes
+  gather_facts: true
+  become: true
+
+  tasks:
+    # --------- OS - update all packages
+    - name: node - setup - OS - update all packages
+      ansible.builtin.apt:
+        upgrade: dist
+        force_apt_get: true
+
+    # --------- Setup Time
+    - name: node - setup - time - set timezone
+      ansible.builtin.timezone:
+        name: "{{ os.time.timezone }}"
+
+    - name: node - setup - time - set NTP server
+      ansible.builtin.replace:
+        path: /etc/systemd/timesyncd.conf
+        regexp: "#NTP=.*$"
+        replace: "NTP={{ os.time.ntp.server }}"
+      when: os.time.ntp.server is not undefined
+
+    - name: node - setup - time - enable ubuntu fallback
+      ansible.builtin.replace:
+        path: /etc/systemd/timesyncd.conf
+        regexp: "#FallbackNTP=ntp.ubuntu.com"
+        replace: "FallbackNTP=ntp.ubuntu.com"
+      when: os.time.ntp.server is not undefined
+
+    - name: node - setup - time - restart timesyncd
+      ansible.builtin.systemd:
+        state: restarted
+        name: systemd-timesyncd
+      changed_when: false
+
+    # --------- Setup Swap
+    - name: node - setup - turn off swap for current session
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+
+    - name: node - setup - remove swap from fstab
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    # --------- Fix DNS using resolv
+
+    - name: node - setup - dns - fix resolved link
+      ansible.builtin.file:
+        src: /run/systemd/resolve/resolv.conf
+        dest: /etc/resolv.conf
+        state: link
+        mode: 0644
+
+    - name: node - setup - dns - restart resolved
+      ansible.builtin.systemd:
+        state: restarted
+        name: systemd-resolved
+      changed_when: false
+
+    # --- Install base software
+
+    - name: node - setup - software - base
+      ansible.builtin.apt:
+        pkg: [nfs-common, git, ncdu, curl, wget]
+        update_cache: true
+
+    - name: node - setup - software - setup dependencies
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: true
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg-agent
+        - software-properties-common
+
+    # ---  Install containerd
+
+    - name: node - setup - containerd - docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: node - setup - containerd - docker repository
+      ansible.builtin.apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        state: present
+
+    - name: node - setup - containerd - install
+      ansible.builtin.apt:
+        name: "{{ 'containerd.io' if (( containerd.version is undefined ) or ( containerd.version == None ) \
+              or ( containerd.version == 'latest' )) else 'containerd.io='+( containerd.version | string | default('') ) }}"
+        update_cache: true
+
+    - name: node - setup - containerd - modules
+      ansible.builtin.copy:
+        dest: "/etc/modules-load.d/containerd.conf"
+        content: |
+          overlay
+          br_netfilter
+        mode: 0644
+
+    - name: node - setup - containerd - modprobe modules
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: node - setup - containerd - systctl fixes
+      ansible.builtin.copy:
+        dest: "/etc/sysctl.d/kubernetes.conf"
+        content: |
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+        mode: 0644
+
+    - name: node - setup - containerd - systctl register
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+    - name: node - setup - containerd - directory
+      ansible.builtin.file:
+        path: /etc/containerd
+        state: directory
+        mode: 0755
+
+    - name: node - setup - containerd - load containerd default config
+      ansible.builtin.command: "containerd config default"
+      register: containerd_config_default
+      changed_when: false
+
+    - name: node - setup - containerd - write containerd default config to disk
+      ansible.builtin.copy:
+        dest: "/etc/containerd/config.toml.default"
+        content: "{{ containerd_config_default.stdout }}"
+        mode: 0644
+      changed_when: false
+
+    - name: node - setup - containerd - write containerd kubernetes config template to disk
+      ansible.builtin.copy:
+        src: "/etc/containerd/config.toml.default"
+        remote_src: true
+        dest: "/etc/containerd/config.toml.default_kubernetes"
+        mode: 0644
+      changed_when: false
+
+    - name: node - setup - containerd - enable SystemdCgroup in kubernetes config template
+      ansible.builtin.lineinfile:
+        path: /etc/containerd/config.toml.default_kubernetes
+        regexp: "^(.*)SystemdCgroup(.*)$"
+        line: '            SystemdCgroup = true'
+        state: present
+        backrefs: true
+      changed_when: false
+
+    - name: node - setup - containerd - apply containerd kubernetes config
+      ansible.builtin.copy:
+        src: "/etc/containerd/config.toml.default_kubernetes"
+        remote_src: true
+        dest: "/etc/containerd/config.toml"
+        mode: 0644
+
+    - name: node - setup - containerd - restart containerd
+      ansible.builtin.systemd:
+        state: restarted
+        name: containerd
+      changed_when: false
+
+    - name: node - setup - containerd - crictl - download
+      ansible.builtin.get_url:
+        url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/\
+              v{{ containerd.crictl.version }}/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
+        dest: "/tmp/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
+        mode: 0644
+
+    - name: node - setup - containerd - crictl - extract
+      ansible.builtin.unarchive:
+        src: "/tmp/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
+        dest: "/usr/local/bin"
+        mode: +x
+        remote_src: true
+
+    - name: node - setup - containerd - crictl - get containerd info
+      ansible.builtin.command: crictl --debug -r unix:///run/containerd/containerd.sock info
+      register: results
+      changed_when: false
+
+    # ---  Install kubernetes
+    - name: node - setup - kubernetes - add apt key
+      ansible.builtin.apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: node - setup - kubernetes - add apt repository
+      ansible.builtin.apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+        filename: kubernetes.list
+
+    - name: node - setup - kubernetes - apt unhold packages for version upgrade
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
+      when: kubernetes.upgrade
+
+    - name: node - setup - kubernetes - install kubeadm, kubelet and kubectl
+      ansible.builtin.apt:
+        name: "{{ packages }}"
+        state: present
+        update_cache: true
+      vars:
+        packages:
+          - "{{ 'kubelet' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) \
+          or ( kubernetes.version == 'latest' )) else 'kubelet='+( kubernetes.version | string | default('')) }}"
+          - "{{ 'kubeadm' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) \
+          or ( kubernetes.version == 'latest' )) else 'kubeadm='+( kubernetes.version | string | default('')) }}"
+          - "{{ 'kubectl' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) \
+          or ( kubernetes.version == 'latest' )) else 'kubectl='+( kubernetes.version | string | default('')) }}"
+
+    - name: node - setup - kubernetes - apt hold packages
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
+
+- name: Primary Control Plane Setup
+  hosts: primary_control_plane
+  gather_facts: true
+
+  tasks:
+    # ---  Install kubernetes
+    - name: os - echo home directory
+      ansible.builtin.shell: echo $HOME
+      register: home_output
+      changed_when: false
+
+    - name: os - store home directory
+      ansible.builtin.set_fact:
+        user_home: "{{ home_output.stdout }}"
+
+    - name: kubernetes - control-plane - ensure kube directory
+      ansible.builtin.file:
+        path: "$HOME/.kube/"
+        state: directory
+        mode: 0755
+
+    - name: kubernetes - control-plane - check setup log existence
+      ansible.builtin.stat:
+        path: "{{ user_home }}/.kube/setup.log"
+      register: setup_log_stat
+
+    - name: kubernetes - control-plane - set initialized flag
+      ansible.builtin.set_fact:
+        initialized: "{{ setup_log_stat.stat.exists }}"
+
+    - name: kubernetes - control-plane - initialize
+      ansible.builtin.command: "kubeadm init --control-plane-endpoint {{ kubernetes.control_plane.endpoint }} \
+             --token-ttl=0 --upload-certs --pod-network-cidr={{ kubernetes.network.pod_network_cidr }} --service-cidr={{ kubernetes.network.service_cidr }}"
+      become: true
+      run_once: true
+      register: kubeadm_init_output
+      when: not initialized
+
+    - name: kubernetes - control-plane - store setup log
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.kube/setup.log"
+        content: "{{ kubeadm_init_output.stdout }}"
+        mode: 0644
+      when: not initialized and kubeadm_init_output is not undefined
+
+    - name: kubernetes - control-plane - set initialized flag
+      ansible.builtin.set_fact:
+        initialized: true
+      when: not initialized and kubeadm_init_output is not undefined
+
+    - name: kubernetes - control-plane - copy config
+      ansible.builtin.copy:
+        src: "/etc/kubernetes/admin.conf"
+        remote_src: true
+        dest: "{{ user_home }}/.kube/config"
+        mode: 0644
+      when: initialized
+      become: true
+
+    - name: kubernetes - control-plane - set config permissions
+      ansible.builtin.file:
+        path: "{{ user_home }}/.kube/config"
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_id }}"
+      when: initialized
+      become: true
+
+    # ---  Install CNI
+
+    - name: kubernetes - control-plane - calico - download manifest
+      ansible.builtin.get_url:
+        url: "https://docs.projectcalico.org/manifests/calico.yaml"
+        dest: "{{ user_home }}/.kube/calico.yaml_default"
+        mode: 0644
+
+    - name: kubernetes - control-plane - calico - write calico manifest template to disk
+      ansible.builtin.copy:
+        src: "{{ user_home }}/.kube/calico.yaml_default"
+        remote_src: true
+        dest: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        mode: 0644
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - enable CALICO_IPV4POOL_VXLAN
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        regexp: 'value: "Never"'
+        insertafter: "^name: CALICO_IPV4POOL_VXLAN"
+        line: '              value: "Always"'
+        firstmatch: true
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - disable CALICO_IPV4POOL_IPIP
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        regexp: 'value: "Always"'
+        insertafter: "^name: CALICO_IPV4POOL_IPIP"
+        line: '              value: "Never"'
+        firstmatch: true
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - set calico_backend to vxlan
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        regexp: 'calico_backend: "bird"'
+        line: '  calico_backend: "vxlan"'
+        firstmatch: true
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - disable bird-live liveness probe
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        insertafter: "^livenessProbe:"
+        regexp: "- -bird-live"
+        line: "              # - -bird-live"
+        firstmatch: true
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - disable bird-live liveness probe
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        insertafter: "^readinessProbe:"
+        regexp: "- -bird-ready"
+        line: "              # - -bird-ready"
+        firstmatch: true
+      changed_when: false
+
+    - name: node - setup - containerd - apply containerd kubernetes config
+      ansible.builtin.copy:
+        src: "{{ user_home }}/.kube/calico.yaml_kubernetes"
+        remote_src: true
+        dest: "{{ user_home }}/.kube/calico.yaml"
+        mode: 0644
+
+    - name: kubernetes - control-plane - calico - install
+      ansible.builtin.command: kubectl apply -f {{ user_home }}/.kube/calico.yaml
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - download calico
+      ansible.builtin.get_url:
+        url: "https://github.com/projectcalico/calico/releases/download/v{{ calico.version }}/calicoctl-linux-amd64"
+        dest: '/usr/local/bin/calicoctl'
+        mode: +x
+      become: true
+
+    - name: kubernetes - control-plane - calico - retrieve default-ipv4-ippool
+      ansible.builtin.command: calicoctl get ippool default-ipv4-ippool -o yaml
+      register: calico_default_ipv4_pool_output
+      retries: 10
+      delay: 10
+      until: calico_default_ipv4_pool_output.stdout is search('default-ipv4-ippool')
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - determine if blockSize needs to be patched
+      ansible.builtin.set_fact:
+        calico_block_size_needs_patch: '{{ calico_default_ipv4_pool_output.stdout.find( "blockSize: 23" ) == -1 }}'
+
+
+    - name: kubernetes - control-plane - calico - default-ipv4-ippool patch - write manifest
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.kube/calico_default-ipv4-ippool_patch.yaml"
+        content: "{{ calico_default_ipv4_pool_output.stdout }}"
+        mode: 0644
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - default-ipv4-ippool patch - clear resourceVersion
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_default-ipv4-ippool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "resourceVersion"
+        line: ""
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - default-ipv4-ippool patch - clear uid
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_default-ipv4-ippool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "uid"
+        line: ""
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - default-ipv4-ippool patch - clear creationTimestamp
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_default-ipv4-ippool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "creationTimestamp"
+        line: ""
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - default-ipv4-ippool patch - fix block size
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_default-ipv4-ippool_patch.yaml"
+        insertafter: "^spec:"
+        regexp: "blockSize"
+        line: '  blockSize: 23'
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - temporary pool - write manifest
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.kube/calico_temporary-pool_patch.yaml"
+        content: "{{ calico_default_ipv4_pool_output.stdout }}"
+        mode: 0644
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - temporary pool - set name
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_temporary-pool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "name: default-ipv4-ippool"
+        line: "  name: temporary-pool"
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - temporary pool - clear resourceVersion
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_temporary-pool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "resourceVersion"
+        line: ""
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - temporary pool - clear uid
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_temporary-pool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "uid"
+        line: ""
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - temporary pool - clear creationTimestamp
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_temporary-pool_patch.yaml"
+        insertafter: "^metadata:"
+        regexp: "creationTimestamp"
+        line: ""
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - temporary pool - set temporary CIDR
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.kube/calico_temporary-pool_patch.yaml"
+        insertafter: "^spec:"
+        regexp: "cidr"
+        line: '  cidr: "{{ kubernetes.network.lb_cidr }}"'
+        firstmatch: true
+      changed_when: false
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - apply temporary pool
+      ansible.builtin.shell: |
+        calicoctl apply -f {{ user_home }}/.kube/calico_temporary-pool_patch.yaml
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - disable current default-ipv4-ippool
+      ansible.builtin.shell: |
+        calicoctl patch ippool default-ipv4-ippool -p '{ "spec": { "disabled": true }}'
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - drop all pods to release IPs
+      ansible.builtin.shell: |
+        kubectl delete pod -A --all
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - delete current default-ipv4-ippool
+      ansible.builtin.shell: |
+        calicoctl delete ippool default-ipv4-ippool
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - apply new default-ipv4-ippool patch
+      ansible.builtin.shell: |
+        calicoctl apply -f {{ user_home }}/.kube/calico_default-ipv4-ippool_patch.yaml
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - disable temporary pool
+      ansible.builtin.shell: |
+        calicoctl patch ippool temporary-pool -p '{ "spec": { "disabled": true }}'
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - drop all pods to release IPs
+      ansible.builtin.shell: |
+        kubectl delete pod -A --all
+      when: calico_block_size_needs_patch
+
+    - name: kubernetes - control-plane - calico - delete temporary pool
+      ansible.builtin.shell: |
+        calicoctl delete pool temporary-pool
+      when: calico_block_size_needs_patch
+
+
+    - name: kubernetes - control-plane - calico - get IPAM configuration
+      ansible.builtin.command: calicoctl ipam show --show-configuration
+      register: calico_ipam_configuration_output
+      changed_when: false
+
+    - name: kubernetes - control-plane - calico - get IPAM configuration
+      ansible.builtin.set_fact:
+        strict_affinity: '{{ true if ("true" in item) else false }}'
+      loop: "{{ calico_ipam_configuration_output.stdout_lines }}"
+      when: '"StrictAffinity" in item'
+
+    - name: kubernetes - control-plane - calico - enable strict_affinity
+      ansible.builtin.shell: |
+        calicoctl ipam configure --strictaffinity=true
+      when: not strict_affinity
+
+- name: Primary Control Plane Setup
+  hosts: kubernetes
+  gather_facts: true
+
+  tasks:
+    - name: os - echo home directory
+      ansible.builtin.shell: echo $HOME
+      register: home_output
+      changed_when: false
+
+    - name: os - store home directory
+      ansible.builtin.set_fact:
+        user_home: "{{ home_output.stdout }}"
+
+    - name: kubernetes - control-plane - ensure kube directory
+      ansible.builtin.file:
+        path: "$HOME/.kube/"
+        state: directory
+        mode: 0755
+
+    - name: kubernetes - node - generate join command
+      when: inventory_hostname in groups[ 'primary_control_plane' ]
+      ansible.builtin.shell: |
+          kubeadm token create --print-join-command
+      become: true
+      register: join_command
+      changed_when: false
+
+    - name: kubernetes - node - upload-certs for join
+      when: inventory_hostname in groups[ 'primary_control_plane' ]
+      ansible.builtin.shell: |
+          sudo kubeadm init phase upload-certs --upload-certs
+      become: true
+      register: cert_upload_output
+      changed_when: false
+
+    - name: kubernetes - set facts
+      when: inventory_hostname in groups[ 'primary_control_plane' ]
+      ansible.builtin.set_fact:
+        join_command: "{{ join_command.stdout }}"
+        certificate_key: "{{ cert_upload_output.stdout_lines | last }}"
+
+    - name: kubernetes - node - retrieve join command
+      ansible.builtin.set_fact:
+        join_command: "{{ hostvars[ groups['primary_control_plane'][0]][ 'join_command' ] }}"
+        certificate_key: "{{ hostvars[ groups['primary_control_plane'][0]][ 'certificate_key' ] }}"
+      changed_when: false
+
+    - name: kubernetes - control-plane - ensure kube directory
+      ansible.builtin.file:
+        path: "$HOME/.kube/"
+        state: directory
+        mode: 0755
+
+    - name: kubernetes - control-plane - check setup log existence
+      ansible.builtin.stat:
+        path: "{{ user_home }}/.kube/setup.log"
+      register: setup_log_stat
+
+    - name: kubernetes - control-plane - set initialized flag
+      ansible.builtin.set_fact:
+        initialized: "{{ setup_log_stat.stat.exists }}"
+
+    - name: kubernetes - node - join
+      when: not initialized
+      ansible.builtin.shell: |
+          {{ join_command + " " + ( "--control-plane --certificate-key "+certificate_key if inventory_hostname in groups[ "replica_control_plane" ] else "") }}
+      become: true
+      register: join_stdout
+
+    - name: kubernetes - node - store setup log
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.kube/setup.log"
+        content: "{{ join_stdout.stdout }}"
+        mode: 0644
+      when: join_stdout is not undefined and not initialized
+
+    - name: kubernetes - control-plane - set initialized flag
+      ansible.builtin.set_fact:
+        initialized: true
+      when: join_stdout is not undefined
