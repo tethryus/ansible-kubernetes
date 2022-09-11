@@ -244,6 +244,24 @@
         - kubelet
         - kubectl
 
+    # This is an issue when deploying coredns on a fresh install, due to a change in image repository location
+    # see: https://github.com/kubernetes/kubernetes/issues/112131
+    - name: node - setup - kubernetes - handle docker image issue with v1.25.00
+      ansible.builtin.command: 'kubeadm version -o json'
+      register: _kubeadm
+      changed_when: false
+
+    - name: node - setup - kubernetes - set kubeadm version fact
+      ansible.builtin.set_fact:
+        kubeadm_version: "{{ _kubeadm.stdout }}"
+
+    - name: node - setup - kubernetes - pull - k8s.gcr.io/coredns:v1.9.3 image
+      ansible.builtin.command: |
+        crictl pull k8s.gcr.io/coredns/coredns:v1.9.3
+         ctr --namespace=k8s.io image tag k8s.gcr.io/coredns/coredns:v1.9.3 k8s.gcr.io/coredns:v1.9.3
+      changed_when: false
+      when: kubeadm_version.clientVersion.gitVersion == 'v1.25.0'
+
 - name: Primary Control Plane Setup
   hosts: primary_control_plane
   gather_facts: true
@@ -629,7 +647,7 @@
     - name: kubernetes - node - join
       when: not initialized
       ansible.builtin.shell: |
-          {{ join_command + " " + ( "--control-plane --certificate-key "+certificate_key if inventory_hostname in groups[ "replica_control_plane" ] else "") }}
+         {{ join_command + " " + ( "--control-plane --certificate-key "+certificate_key if inventory_hostname in groups[ "replica_control_plane" ] else "") }}
       become: true
       register: join_stdout
 
