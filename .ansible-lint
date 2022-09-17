@@ -1,0 +1,7 @@
+---
+
+skip_list:
+  - galaxy_info
+
+exclude_paths:
+  - playbooks/debug.yml

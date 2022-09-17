@@ -1,0 +1,228 @@
+---
+
+# --------- OS - update all packages
+
+- name: node - setup - OS - update all packages
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+  become: true
+
+- name: node - setup - check if nvidia GPU present
+  ansible.builtin.shell: lspci -nn | grep -i nvidia
+  changed_when: false
+  failed_when: false
+  register: nvidia_gpu_check
+
+- name: debug nvidia_gpu_check
+  debug: 
+   var: nvidia_gpu_check.rc
+
+- name: node - setup - install nvidia drivers if detected on host
+  ansible.builtin.apt:
+    package: "{{ nvidia_drivers }}"
+    install_recommends: false
+  become: true
+  when: nvidia_gpu_check.rc == 0
+
+# --------- Setup Time
+- name: node - setup - time - set timezone
+  ansible.builtin.timezone:
+    name: "{{ os.time.timezone }}"
+
+- name: node - setup - time - set NTP server
+  ansible.builtin.replace:
+    path: /etc/systemd/timesyncd.conf
+    regexp: "#NTP=.*$"
+    replace: "NTP={{ os.time.ntp.server }}"
+  when: os.time.ntp.server is not undefined
+
+- name: node - setup - time - enable ubuntu fallback
+  ansible.builtin.replace:
+    path: /etc/systemd/timesyncd.conf
+    regexp: "#FallbackNTP=ntp.ubuntu.com"
+    replace: "FallbackNTP=ntp.ubuntu.com"
+  when: os.time.ntp.server is not undefined
+
+- name: node - setup - time - restart timesyncd
+  ansible.builtin.systemd:
+    state: restarted
+    name: systemd-timesyncd
+  changed_when: false
+  become: true
+
+# --------- Setup Swap
+- name: node - setup - turn off swap for current session
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+  become: true
+
+- name: node - setup - remove swap from fstab
+  mount:
+    name: "{{ item }}"
+    fstype: swap
+    state: absent
+  with_items:
+    - swap
+    - none
+  become: true
+
+# --------- Fix DNS using resolv
+
+- name: node - setup - dns - fix resolved link
+  ansible.builtin.file:
+    src: /run/systemd/resolve/resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    mode: 0644
+  become: true
+
+- name: node - setup - dns - restart resolved
+  ansible.builtin.systemd:
+    state: restarted
+    name: systemd-resolved
+  changed_when: false
+  become: true
+
+# --- Install base software
+
+- name: node - setup - software - base
+  ansible.builtin.apt:
+    pkg: [nfs-common, git, ncdu, curl, wget]
+  become: true
+
+- name: node - setup - software - setup dependencies
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - apt-transport-https
+    - ca-certificates
+    - curl
+    - gnupg-agent
+    - software-properties-common
+  become: true
+
+# ---  Install containerd
+
+- name: node - setup - containerd - docker GPG key
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: node - setup - containerd - docker repository
+  ansible.builtin.apt_repository:
+    repo: deb https://download.docker.com/linux/ubuntu bionic stable
+    state: present
+
+- name: node - setup - containerd - install
+  ansible.builtin.apt:
+    name: "{{ 'containerd.io' if (( containerd.version is undefined ) or ( containerd.version == None ) \
+          or ( containerd.version == 'latest' )) else 'containerd.io='+( containerd.version | string | default('') ) }}"
+  become: true
+
+- name: node - setup - containerd - modules
+  ansible.builtin.copy:
+    dest: "/etc/modules-load.d/containerd.conf"
+    content: |
+      overlay
+      br_netfilter
+    mode: 0644
+  become: true
+
+- name: node - setup - containerd - modprobe modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+  become: true
+
+- name: node - setup - containerd - systctl fixes
+  ansible.builtin.copy:
+    dest: "/etc/sysctl.d/kubernetes.conf"
+    content: |
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.bridge.bridge-nf-call-iptables = 1
+      net.ipv4.ip_forward = 1
+    mode: 0644
+  become: true
+
+- name: node - setup - containerd - systctl register
+  ansible.builtin.command: sysctl --system
+  changed_when: false
+  become: true
+
+- name: node - setup - containerd - directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: 0755
+  become: true
+
+- name: node - setup - containerd - load containerd default config
+  ansible.builtin.command: "containerd config default"
+  register: containerd_config_default
+  changed_when: false
+
+- name: node - setup - containerd - write containerd default config to disk
+  ansible.builtin.copy:
+    dest: "/etc/containerd/config.toml.default"
+    content: "{{ containerd_config_default.stdout }}"
+    mode: 0644
+  changed_when: false
+
+- name: node - setup - containerd - write containerd kubernetes config template to disk
+  ansible.builtin.copy:
+    src: "/etc/containerd/config.toml.default"
+    remote_src: true
+    dest: "/etc/containerd/config.toml.default_kubernetes"
+    mode: 0644
+  changed_when: false
+  become: true
+
+- name: node - setup - containerd - enable SystemdCgroup in kubernetes config template
+  ansible.builtin.lineinfile:
+    path: /etc/containerd/config.toml.default_kubernetes
+    regexp: "^(.*)SystemdCgroup(.*)$"
+    line: '            SystemdCgroup = true'
+    state: present
+    backrefs: true
+  changed_when: false
+  become: true
+
+- name: node - setup - containerd - apply containerd kubernetes config
+  ansible.builtin.copy:
+    src: "/etc/containerd/config.toml.default_kubernetes"
+    remote_src: true
+    dest: "/etc/containerd/config.toml"
+    mode: 0644
+  become: true
+
+- name: node - setup - containerd - restart containerd
+  ansible.builtin.systemd:
+    state: restarted
+    name: containerd
+  changed_when: false
+  become: true
+
+- name: node - setup - containerd - crictl - download
+  ansible.builtin.get_url:
+    url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/\
+          v{{ containerd.crictl.version }}/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
+    dest: "/tmp/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
+    mode: 0644
+
+- name: node - setup - containerd - crictl - extract
+  ansible.builtin.unarchive:
+    src: "/tmp/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
+    dest: "/usr/local/bin"
+    mode: +x
+    remote_src: true
+
+- name: node - setup - containerd - crictl - get containerd info
+  ansible.builtin.command: crictl --debug -r unix:///run/containerd/containerd.sock info
+  register: results
+  changed_when: false
+  become: true

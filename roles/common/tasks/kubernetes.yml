@@ -1,0 +1,61 @@
+---
+# ---  Install kubernetes
+
+- name: node - setup - kubernetes - add apt key
+  ansible.builtin.apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+
+- name: node - setup - kubernetes - add apt repository
+  ansible.builtin.apt_repository:
+    repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+    state: present
+    filename: kubernetes.list
+
+- name: node - setup - kubernetes - apt unhold packages for version upgrade
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: install
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+  when: kubernetes.upgrade
+
+- name: node - setup - kubernetes - install kubeadm, kubelet and kubectl
+  ansible.builtin.apt:
+    name: "{{ packages }}"
+    state: present
+  vars:
+    packages:
+      - "{{ 'kubelet' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or ( kubernetes.version == 'latest' )) else 'kubelet='+( kubernetes.version | string | default('')) }}"
+      - "{{ 'kubeadm' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or ( kubernetes.version == 'latest' )) else 'kubeadm='+( kubernetes.version | string | default('')) }}"
+      - "{{ 'kubectl' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or ( kubernetes.version == 'latest' )) else 'kubectl='+( kubernetes.version | string | default('')) }}"
+
+- name: node - setup - kubernetes - apt hold packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+
+# This is an issue when deploying coredns on a fresh install, due to a change in image repository location
+# see: https://github.com/kubernetes/kubernetes/issues/112131
+- name: node - setup - kubernetes - handle docker image issue with v1.25.00
+  ansible.builtin.command: 'kubeadm version -o json'
+  register: _kubeadm
+  changed_when: false
+
+- name: node - setup - kubernetes - set kubeadm version fact
+  ansible.builtin.set_fact:
+    kubeadm_version: "{{ _kubeadm.stdout }}"
+
+- name: node - setup - kubernetes - pull - k8s.gcr.io/coredns:v1.9.3 image
+  ansible.builtin.command: |
+    crictl pull k8s.gcr.io/coredns/coredns:v1.9.3
+      ctr --namespace=k8s.io image tag k8s.gcr.io/coredns/coredns:v1.9.3 k8s.gcr.io/coredns:v1.9.3
+  changed_when: false
+  when: kubeadm_version.clientVersion.gitVersion == 'v1.25.0'
+  become: true
