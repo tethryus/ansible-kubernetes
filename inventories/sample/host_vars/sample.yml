@@ -12,6 +12,14 @@ containerd:
   crictl:
     version: 1.25.0
 
+iscsi:
+  initiator_name: "iqn.1987-02.ro.drc"
+
+nvidia_drivers:
+  - nvidia-headless-510 
+  - nvidia-utils-510 
+  - libnvidia-encode-510
+
 kubernetes:
   version: 1.25.0-00
   upgrade: false

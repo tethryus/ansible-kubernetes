@@ -103,6 +103,108 @@
     - software-properties-common
   become: true
 
+# --- Install ISCSI software
+
+- name: node - setup - iscsi - install tool
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - open-iscsi 
+    - lsscsi
+    - sg3-utils
+    - multipath-tools
+    - scsitools
+  become: true
+
+- name: node - setup - iscsi - modprobe modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - iscsi_tcp
+  become: true
+
+- name: node - setup - iscsi - set initator name
+  copy:
+    dest: "/etc/iscsi/initiatorname.iscsi"
+    content: |
+      InitiatorName={{ iscsi.initiator_name }}:{{ ansible_hostname }}
+  register: _initiator_changed
+  become: true
+
+- name: node - setup - iscsi - restart iscsid due to initiator change
+  when: _initiator_changed.changed
+  ansible.builtin.service:
+    name: iscsid
+    state: restarted
+  changed_when: false
+  become: true
+
+- name: node - setup - iscsi - restart open-iscsi due to initiator change
+  ansible.builtin.service:
+    name: open-iscsi
+    state: restarted
+  changed_when: false
+  become: true
+
+- name: node - setup - iscsi - multipath config
+  ansible.builtin.copy:
+    dest: "/etc/multipath.conf"
+    content: |
+      defaults {
+          user_friendly_names yes
+          find_multipaths yes
+          polling_interval 3
+          max_fds 8192
+      }
+
+      devices {
+          device {
+              vendor "STARWIND"
+              product "STARWIND*"
+              path_grouping_policy multibus
+              path_checker "tur"
+              failback immediate
+              path_selector "round-robin 0"
+              rr_min_io 3
+              rr_weight uniform
+              hardware_handler "1 alua"
+          }
+
+      }
+
+      # blacklist {
+      #     devnode "^sd[a-z0-9]+"
+      # }
+  become: true
+
+- name: node - setup - iscsi - enable open-iscsi
+  ansible.builtin.systemd:
+    enabled: true
+    name: open-iscsi
+  become: true
+
+- name: node - setup - iscsi - enable multipath-tools
+  ansible.builtin.systemd:
+    enabled: true
+    name: multipath-tools.service
+  become: true
+
+- name: node - setup - iscsi - start open-iscsi
+  ansible.builtin.service:
+    name: open-iscsi
+    state: started
+  changed_when: false
+  become: true
+
+- name: node - setup - iscsi - restart multipath-tools
+  ansible.builtin.service:
+    name: multipath-tools
+    state: restarted
+  changed_when: false
+  become: true
+
 # ---  Install containerd
 
 - name: node - setup - containerd - docker GPG key
