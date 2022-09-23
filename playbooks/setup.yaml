@@ -13,3 +13,10 @@
   roles:
     - role: replica
       tags: replica
+
+- name: Master - Restart gpu operator
+  hosts: primary_control_plane
+  gather_facts: false
+  roles:
+    - role: gpu
+      tags: gpu
