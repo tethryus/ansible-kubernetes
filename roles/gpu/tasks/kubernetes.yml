@@ -19,7 +19,7 @@
   ansible.builtin.group_by:
     key: gpu_installed
   when: _gpu_host.changed
-  
+
 - name: kubernetes - control-plane - restart gpu operator toolkit daemonset pods
   kubernetes.core.k8s:
     api_version: v1
