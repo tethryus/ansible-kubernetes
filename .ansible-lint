@@ -1,7 +1,7 @@
 ---
-
 skip_list:
-  - galaxy_info
+  - meta-no-info
+  - no-handler
 
 exclude_paths:
   - playbooks/debug.yml

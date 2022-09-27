@@ -12,7 +12,7 @@
   when: inventory_hostname in groups['primary_control_plane']
 
 - name: node - setup - check if nvidia GPU present
-  ansible.builtin.shell: lspci -nn | grep -i nvidia
+  ansible.builtin.command: lspci -nn | grep -i nvidia
   changed_when: false
   failed_when: false
   register: nvidia_gpu_check

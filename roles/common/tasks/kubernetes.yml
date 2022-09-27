@@ -28,9 +28,12 @@
     state: present
   vars:
     packages:
-      - "{{ 'kubelet' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or ( kubernetes.version == 'latest' )) else 'kubelet='+( kubernetes.version | string | default('')) }}"
-      - "{{ 'kubeadm' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or ( kubernetes.version == 'latest' )) else 'kubeadm='+( kubernetes.version | string | default('')) }}"
-      - "{{ 'kubectl' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or ( kubernetes.version == 'latest' )) else 'kubectl='+( kubernetes.version | string | default('')) }}"
+      - "{{ 'kubelet' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or \
+        ( kubernetes.version == 'latest' )) else 'kubelet='+( kubernetes.version | string | default('')) }}"
+      - "{{ 'kubeadm' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or \
+        ( kubernetes.version == 'latest' )) else 'kubeadm='+( kubernetes.version | string | default('')) }}"
+      - "{{ 'kubectl' if (( kubernetes.version is undefined ) or ( kubernetes.version == None ) or \
+        ( kubernetes.version == 'latest' )) else 'kubectl='+( kubernetes.version | string | default('')) }}"
 
 - name: node - setup - kubernetes - apt hold packages
   ansible.builtin.dpkg_selections:

@@ -17,7 +17,8 @@
 
 - name: kubernetes - control-plane - initialize
   ansible.builtin.command: "kubeadm init --control-plane-endpoint {{ kubernetes.control_plane.endpoint }} \
-          --token-ttl=0 --upload-certs --pod-network-cidr={{ kubernetes.network.pod_network_cidr }} --service-cidr={{ kubernetes.network.service_cidr }}"
+          --token-ttl=0 --upload-certs --pod-network-cidr={{ kubernetes.network.pod_network_cidr }} \
+          --service-cidr={{ kubernetes.network.service_cidr }}"
   become: true
   run_once: true
   register: kubeadm_init_output

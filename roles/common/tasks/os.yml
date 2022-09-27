@@ -89,11 +89,11 @@
 # --- Install ISCSI software
 
 - name: node - setup - iscsi - install tool
-  apt:
+  ansible.builtin.apt:
     name: "{{ item }}"
     state: present
   loop:
-    - open-iscsi 
+    - open-iscsi
     - lsscsi
     - sg3-utils
     - multipath-tools
@@ -109,10 +109,11 @@
   become: true
 
 - name: node - setup - iscsi - set initator name
-  copy:
+  ansible.builtin.copy:
     dest: "/etc/iscsi/initiatorname.iscsi"
     content: |
       InitiatorName={{ iscsi.initiator_name }}:{{ ansible_hostname }}
+    mode: 0644
   register: _initiator_changed
   become: true
 
@@ -134,6 +135,7 @@
 - name: node - setup - iscsi - multipath config
   ansible.builtin.copy:
     dest: "/etc/multipath.conf"
+    mode: 0644
     content: |
       defaults {
           user_friendly_names yes

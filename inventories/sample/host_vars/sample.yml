@@ -1,3 +1,5 @@
+---
+
 os:
   time:
     timezone: "Europe/Bucharest"
@@ -16,8 +18,8 @@ iscsi:
   initiator_name: "changeme"
 
 nvidia_drivers:
-  - nvidia-headless-510 
-  - nvidia-utils-510 
+  - nvidia-headless-510
+  - nvidia-utils-510
   - libnvidia-encode-510
 
 kubernetes:
