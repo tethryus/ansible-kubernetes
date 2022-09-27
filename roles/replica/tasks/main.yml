@@ -1,37 +1,36 @@
 ---
 
-- name: kubernetes - control-plane - ensure kube directory
+- name: Kubernetes - control-plane - ensure kube directory
   ansible.builtin.file:
     path: "~{{ ansible_facts.user_id }}/.kube/"
     state: directory
     mode: 0755
 
-- name: kubernetes - node - retrieve join command
+- name: Kubernetes - Node - retrieve join command
   ansible.builtin.set_fact:
-    join_command: "{{ hostvars[ groups['primary_control_plane'][0]][ 'join_command' ] }}"
-    certificate_key: "{{ hostvars[ groups['primary_control_plane'][0]][ 'certificate_key' ] }}"
+    join_command: "{{ hostvars[groups['primary_control_plane'][0]]['certificate_key'] }}"
+    certificate_key: "{{ hostvars[groups['primary_control_plane'][0]]['certificate_key'] }}"
   changed_when: false
 
-- name: kubernetes - control-plane - check setup log existence
+- name: Kubernetes - control-plane - check setup log existence
   ansible.builtin.stat:
     path: "~{{ ansible_facts.user_id }}/.kube/setup.log"
   register: setup_log_stat
 
-- name: kubernetes - control-plane - set initialized flag
+- name: Kubernetes - control-plane - set initialized flag
   ansible.builtin.set_fact:
     initialized: "{{ setup_log_stat.stat.exists }}"
 
-- name: kubernetes - node - join
+- name: Kubernetes - Node - join
   when: not initialized
   ansible.builtin.shell: >-
-      {{ join_command + " " + (
-      "--control-plane --certificate-key "+certificate_key
-      if inventory_hostname in groups[ "replica_control_plane" ]
-      else "") }} > ~/.kube/setup.log
+   {{ join_command + " " +
+   ("--control-plane --certificate-key " + certificate_key
+   if inventory_hostname in groups["replica_control_plane"] else "") }} > ~/.kube/setup.log
   become: true
   register: join_stdout
 
-- name: kubernetes - control-plane - set initialized flag
+- name: Kubernetes - control-plane - set initialized flag
   ansible.builtin.set_fact:
     initialized: true
   when: join_stdout is not undefined

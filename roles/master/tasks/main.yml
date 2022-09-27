@@ -1,21 +1,21 @@
 ---
 
-- name: kubernetes - control-plane - ensure kube directory
+- name: Kubernetes - control-plane - ensure kube directory
   ansible.builtin.file:
     path: "~{{ ansible_facts.user_id }}/.kube/"
     state: directory
     mode: 0755
 
-- name: kubernetes - control-plane - check setup log existence
+- name: Kubernetes - control-plane - check setup log existence
   ansible.builtin.stat:
     path: "~{{ ansible_facts.user_id }}/.kube/setup.log"
   register: setup_log_stat
 
-- name: kubernetes - control-plane - set initialized flag
+- name: Kubernetes - control-plane - set initialized flag
   ansible.builtin.set_fact:
     initialized: "{{ setup_log_stat.stat.exists }}"
 
-- name: kubernetes - control-plane - initialize
+- name: Kubernetes - control-plane - initialize
   ansible.builtin.command: "kubeadm init --control-plane-endpoint {{ kubernetes.control_plane.endpoint }} \
           --token-ttl=0 --upload-certs --pod-network-cidr={{ kubernetes.network.pod_network_cidr }} \
           --service-cidr={{ kubernetes.network.service_cidr }}"
@@ -24,19 +24,19 @@
   register: kubeadm_init_output
   when: not initialized
 
-- name: kubernetes - control-plane - store setup log
+- name: Kubernetes - control-plane - store setup log
   ansible.builtin.copy:
     dest: "~{{ ansible_facts.user_id }}/.kube/setup.log"
     content: "{{ kubeadm_init_output.stdout }}"
     mode: 0644
   when: not initialized and kubeadm_init_output is not undefined
 
-- name: kubernetes - control-plane - set initialized flag
+- name: Kubernetes - control-plane - set initialized flag
   ansible.builtin.set_fact:
     initialized: true
   when: not initialized and kubeadm_init_output is not undefined
 
-- name: kubernetes - control-plane - copy config
+- name: Kubernetes - control-plane - copy config
   ansible.builtin.copy:
     src: "/etc/kubernetes/admin.conf"
     remote_src: true
@@ -45,7 +45,7 @@
   when: initialized
   become: true
 
-- name: kubernetes - control-plane - set config permissions
+- name: Kubernetes - control-plane - set config permissions
   ansible.builtin.file:
     path: "~{{ ansible_facts.user_id }}/.kube/config"
     owner: "{{ ansible_user_id }}"
@@ -55,13 +55,13 @@
 
 # ---  Install CNI
 
-- name: kubernetes - control-plane - calico - download manifest
+- name: Kubernetes - control-plane - calico - download manifest
   ansible.builtin.get_url:
     url: "https://docs.projectcalico.org/manifests/calico.yaml"
     dest: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_default"
     mode: 0644
 
-- name: kubernetes - control-plane - calico - write calico manifest template to disk
+- name: Kubernetes - control-plane - calico - write calico manifest template to disk
   ansible.builtin.copy:
     src: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_default"
     remote_src: true
@@ -69,7 +69,7 @@
     mode: 0644
   changed_when: false
 
-- name: kubernetes - control-plane - calico - enable CALICO_IPV4POOL_VXLAN
+- name: Kubernetes - control-plane - calico - enable CALICO_IPV4POOL_VXLAN
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_kubernetes"
     regexp: 'value: "Never"'
@@ -78,7 +78,7 @@
     firstmatch: true
   changed_when: false
 
-- name: kubernetes - control-plane - calico - disable CALICO_IPV4POOL_IPIP
+- name: Kubernetes - control-plane - calico - disable CALICO_IPV4POOL_IPIP
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_kubernetes"
     regexp: 'value: "Always"'
@@ -87,7 +87,7 @@
     firstmatch: true
   changed_when: false
 
-- name: kubernetes - control-plane - calico - set calico_backend to vxlan
+- name: Kubernetes - control-plane - calico - set calico_backend to vxlan
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_kubernetes"
     regexp: 'calico_backend: "bird"'
@@ -95,7 +95,7 @@
     firstmatch: true
   changed_when: false
 
-- name: kubernetes - control-plane - calico - disable bird-live liveness probe
+- name: Kubernetes - control-plane - calico - disable bird-live liveness probe
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_kubernetes"
     insertafter: "^livenessProbe:"
@@ -104,7 +104,7 @@
     firstmatch: true
   changed_when: false
 
-- name: kubernetes - control-plane - calico - disable bird-live liveness probe
+- name: Kubernetes - control-plane - calico - disable bird-live liveness probe
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_kubernetes"
     insertafter: "^readinessProbe:"
@@ -113,25 +113,25 @@
     firstmatch: true
   changed_when: false
 
-- name: node - setup - containerd - apply containerd kubernetes config
+- name: Node - setup - containerd - apply containerd kubernetes config
   ansible.builtin.copy:
     src: "~{{ ansible_facts.user_id }}/.kube/calico.yaml_kubernetes"
     remote_src: true
     dest: "~{{ ansible_facts.user_id }}/.kube/calico.yaml"
     mode: 0644
 
-- name: kubernetes - control-plane - calico - install
+- name: Kubernetes - control-plane - calico - install
   ansible.builtin.command: kubectl apply -f ~{{ ansible_facts.user_id }}/.kube/calico.yaml
   changed_when: false
 
-- name: kubernetes - control-plane - calico - download calico
+- name: Kubernetes - control-plane - calico - download calico
   ansible.builtin.get_url:
     url: "https://github.com/projectcalico/calico/releases/download/v{{ calico.version }}/calicoctl-linux-amd64"
     dest: '/usr/local/bin/calicoctl'
     mode: +x
   become: true
 
-- name: kubernetes - control-plane - calico - retrieve default-ipv4-ippool
+- name: Kubernetes - control-plane - calico - retrieve default-ipv4-ippool
   ansible.builtin.command: calicoctl get ippool default-ipv4-ippool -o yaml
   register: calico_default_ipv4_pool_output
   retries: 10
@@ -139,18 +139,18 @@
   until: calico_default_ipv4_pool_output.stdout is search('default-ipv4-ippool')
   changed_when: false
 
-- name: kubernetes - control-plane - calico - determine if blockSize needs to be patched
+- name: Kubernetes - control-plane - calico - determine if blockSize needs to be patched
   ansible.builtin.set_fact:
-    calico_block_size_needs_patch: '{{ calico_default_ipv4_pool_output.stdout.find( "blockSize: 23" ) == -1 }}'
+    calico_block_size_needs_patch: '{{ calico_default_ipv4_pool_output.stdout.find("blockSize: 23") == -1 }}'
 
-- name: kubernetes - control-plane - calico - default-ipv4-ippool patch - write manifest
+- name: Kubernetes - control-plane - calico - default-ipv4-ippool patch - write manifest
   ansible.builtin.copy:
     dest: "~{{ ansible_facts.user_id }}/.kube/calico_default-ipv4-ippool_patch.yaml"
     content: "{{ calico_default_ipv4_pool_output.stdout }}"
     mode: 0644
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - default-ipv4-ippool patch - clear resourceVersion
+- name: Kubernetes - control-plane - calico - default-ipv4-ippool patch - clear resourceVersion
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_default-ipv4-ippool_patch.yaml"
     insertafter: "^metadata:"
@@ -160,7 +160,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - default-ipv4-ippool patch - clear uid
+- name: Kubernetes - control-plane - calico - default-ipv4-ippool patch - clear uid
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_default-ipv4-ippool_patch.yaml"
     insertafter: "^metadata:"
@@ -170,7 +170,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - default-ipv4-ippool patch - clear creationTimestamp
+- name: Kubernetes - control-plane - calico - default-ipv4-ippool patch - clear creationTimestamp
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_default-ipv4-ippool_patch.yaml"
     insertafter: "^metadata:"
@@ -180,7 +180,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - default-ipv4-ippool patch - fix block size
+- name: Kubernetes - control-plane - calico - default-ipv4-ippool patch - fix block size
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_default-ipv4-ippool_patch.yaml"
     insertafter: "^spec:"
@@ -190,14 +190,14 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - temporary pool - write manifest
+- name: Kubernetes - control-plane - calico - temporary pool - write manifest
   ansible.builtin.copy:
     dest: "~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml"
     content: "{{ calico_default_ipv4_pool_output.stdout }}"
     mode: 0644
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - temporary pool - set name
+- name: Kubernetes - control-plane - calico - temporary pool - set name
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml"
     insertafter: "^metadata:"
@@ -207,7 +207,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - temporary pool - clear resourceVersion
+- name: Kubernetes - control-plane - calico - temporary pool - clear resourceVersion
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml"
     insertafter: "^metadata:"
@@ -217,7 +217,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - temporary pool - clear uid
+- name: Kubernetes - control-plane - calico - temporary pool - clear uid
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml"
     insertafter: "^metadata:"
@@ -227,7 +227,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - temporary pool - clear creationTimestamp
+- name: Kubernetes - control-plane - calico - temporary pool - clear creationTimestamp
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml"
     insertafter: "^metadata:"
@@ -237,7 +237,7 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - temporary pool - set temporary CIDR
+- name: Kubernetes - control-plane - calico - temporary pool - set temporary CIDR
   ansible.builtin.lineinfile:
     path: "~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml"
     insertafter: "^spec:"
@@ -247,77 +247,77 @@
   changed_when: false
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - apply temporary pool
+- name: Kubernetes - control-plane - calico - apply temporary pool
   ansible.builtin.shell: |
     calicoctl apply -f ~{{ ansible_facts.user_id }}/.kube/calico_temporary-pool_patch.yaml
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - disable current default-ipv4-ippool
+- name: Kubernetes - control-plane - calico - disable current default-ipv4-ippool
   ansible.builtin.shell: |
     calicoctl patch ippool default-ipv4-ippool -p '{ "spec": { "disabled": true }}'
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - drop all pods to release IPs
+- name: Kubernetes - control-plane - calico - drop all pods to release IPs
   ansible.builtin.shell: |
     kubectl delete pod -A --all
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - delete current default-ipv4-ippool
+- name: Kubernetes - control-plane - calico - delete current default-ipv4-ippool
   ansible.builtin.shell: |
     calicoctl delete ippool default-ipv4-ippool
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - apply new default-ipv4-ippool patch
+- name: Kubernetes - control-plane - calico - apply new default-ipv4-ippool patch
   ansible.builtin.shell: |
     calicoctl apply -f ~{{ ansible_facts.user_id }}/.kube/calico_default-ipv4-ippool_patch.yaml
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - disable temporary pool
+- name: Kubernetes - control-plane - calico - disable temporary pool
   ansible.builtin.shell: |
     calicoctl patch ippool temporary-pool -p '{ "spec": { "disabled": true }}'
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - drop all pods to release IPs
+- name: Kubernetes - control-plane - calico - drop all pods to release IPs
   ansible.builtin.shell: |
     kubectl delete pod -A --all
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - delete temporary pool
+- name: Kubernetes - control-plane - calico - delete temporary pool
   ansible.builtin.shell: |
     calicoctl delete pool temporary-pool
   when: calico_block_size_needs_patch
 
-- name: kubernetes - control-plane - calico - get IPAM configuration
+- name: Kubernetes - control-plane - calico - get IPAM configuration
   ansible.builtin.command: calicoctl ipam show --show-configuration
   register: calico_ipam_configuration_output
   changed_when: false
 
-- name: kubernetes - control-plane - calico - get IPAM configuration
+- name: Kubernetes - control-plane - calico - get IPAM configuration
   ansible.builtin.set_fact:
     strict_affinity: '{{ true if ("true" in item) else false }}'
   loop: "{{ calico_ipam_configuration_output.stdout_lines }}"
   when: '"StrictAffinity" in item'
 
-- name: kubernetes - control-plane - calico - enable strict_affinity
+- name: Kubernetes - control-plane - calico - enable strict_affinity
   ansible.builtin.shell: |
     calicoctl ipam configure --strictaffinity=true
   when: not strict_affinity
 
-- name: kubernetes - node - generate join command
+- name: Kubernetes - Node - generate join command
   ansible.builtin.shell: |
       kubeadm token create --print-join-command
   become: true
   register: join_command
   changed_when: false
 
-- name: kubernetes - node - upload-certs for join
+- name: Kubernetes - Node - upload-certs for join
   ansible.builtin.shell: |
       sudo kubeadm init phase upload-certs --upload-certs
   become: true
   register: cert_upload_output
   changed_when: false
 
-- name: kubernetes - set facts
+- name: Kubernetes - set facts
   ansible.builtin.set_fact:
     join_command: "{{ join_command.stdout }}"
     certificate_key: "{{ cert_upload_output.stdout_lines | last }}"

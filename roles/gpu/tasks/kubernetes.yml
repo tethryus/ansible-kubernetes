@@ -1,6 +1,6 @@
 ---
 
-- name: kubernetes - control-plane - set gpu labels to nvidia nodes
+- name: Kubernetes - control-plane - set gpu labels to nvidia Nodes
   kubernetes.core.k8s:
     definition:
       api_version: v1
@@ -15,12 +15,12 @@
   register: _gpu_host
   with_items: '{{ groups.primary_control_plane }}'
 
-- name: os - add host to group
+- name: OS - add host to group
   ansible.builtin.group_by:
     key: gpu_installed
   when: _gpu_host.changed
 
-- name: kubernetes - control-plane - restart gpu operator toolkit daemonset pods
+- name: Kubernetes - control-plane - restart gpu operator toolkit daemonset pods
   kubernetes.core.k8s:
     api_version: v1
     kind: Pod

@@ -2,32 +2,32 @@
 
 # --------- OS - update all packages
 
-- name: node - setup - OS - update all packages
+- name: Node - setup - OS - update all packages
   ansible.builtin.apt:
     upgrade: dist
     update_cache: true
   become: true
 
 # --------- Setup Time
-- name: node - setup - time - set timezone
+- name: Node - setup - time - set timezone
   ansible.builtin.timezone:
     name: "{{ os.time.timezone }}"
 
-- name: node - setup - time - set NTP server
+- name: Node - setup - time - set NTP server
   ansible.builtin.replace:
     path: /etc/systemd/timesyncd.conf
     regexp: "#NTP=.*$"
     replace: "NTP={{ os.time.ntp.server }}"
   when: os.time.ntp.server is not undefined
 
-- name: node - setup - time - enable ubuntu fallback
+- name: Node - setup - time - enable ubuntu fallback
   ansible.builtin.replace:
     path: /etc/systemd/timesyncd.conf
     regexp: "#FallbackNTP=ntp.ubuntu.com"
     replace: "FallbackNTP=ntp.ubuntu.com"
   when: os.time.ntp.server is not undefined
 
-- name: node - setup - time - restart timesyncd
+- name: Node - setup - time - restart timesyncd
   ansible.builtin.systemd:
     state: restarted
     name: systemd-timesyncd
@@ -35,12 +35,12 @@
   become: true
 
 # --------- Setup Swap
-- name: node - setup - turn off swap for current session
+- name: Node - setup - turn off swap for current session
   ansible.builtin.command: swapoff -a
   changed_when: false
   become: true
 
-- name: node - setup - remove swap from fstab
+- name: Node - setup - remove swap from fstab
   mount:
     name: "{{ item }}"
     fstype: swap
@@ -52,7 +52,7 @@
 
 # --------- Fix DNS using resolv
 
-- name: node - setup - dns - fix resolved link
+- name: Node - setup - dns - fix resolved link
   ansible.builtin.file:
     src: /run/systemd/resolve/resolv.conf
     dest: /etc/resolv.conf
@@ -60,7 +60,7 @@
     mode: 0644
   become: true
 
-- name: node - setup - dns - restart resolved
+- name: Node - setup - dns - restart resolved
   ansible.builtin.systemd:
     state: restarted
     name: systemd-resolved
@@ -69,12 +69,12 @@
 
 # --- Install base software
 
-- name: node - setup - software - base
+- name: Node - setup - software - base
   ansible.builtin.apt:
     pkg: [nfs-common, git, ncdu, curl, wget]
   become: true
 
-- name: node - setup - software - setup dependencies
+- name: Node - setup - software - setup dependencies
   ansible.builtin.apt:
     name: "{{ item }}"
     state: present
@@ -88,7 +88,7 @@
 
 # --- Install ISCSI software
 
-- name: node - setup - iscsi - install tool
+- name: Node - setup - iscsi - install tool
   ansible.builtin.apt:
     name: "{{ item }}"
     state: present
@@ -100,7 +100,7 @@
     - scsitools
   become: true
 
-- name: node - setup - iscsi - modprobe modules
+- name: Node - setup - iscsi - modprobe modules
   community.general.modprobe:
     name: "{{ item }}"
     state: present
@@ -108,7 +108,7 @@
     - iscsi_tcp
   become: true
 
-- name: node - setup - iscsi - set initator name
+- name: Node - setup - iscsi - set initator name
   ansible.builtin.copy:
     dest: "/etc/iscsi/initiatorname.iscsi"
     content: |
@@ -117,7 +117,7 @@
   register: _initiator_changed
   become: true
 
-- name: node - setup - iscsi - restart iscsid due to initiator change
+- name: Node - setup - iscsi - restart iscsid due to initiator change
   when: _initiator_changed.changed
   ansible.builtin.service:
     name: iscsid
@@ -125,14 +125,14 @@
   changed_when: false
   become: true
 
-- name: node - setup - iscsi - restart open-iscsi due to initiator change
+- name: Node - setup - iscsi - restart open-iscsi due to initiator change
   ansible.builtin.service:
     name: open-iscsi
     state: restarted
   changed_when: false
   become: true
 
-- name: node - setup - iscsi - multipath config
+- name: Node - setup - iscsi - multipath config
   ansible.builtin.copy:
     dest: "/etc/multipath.conf"
     mode: 0644
@@ -160,30 +160,30 @@
       }
 
       # blacklist {
-      #     devnode "^sd[a-z0-9]+"
+      #     devNode "^sd[a-z0-9]+"
       # }
   become: true
 
-- name: node - setup - iscsi - enable open-iscsi
+- name: Node - setup - iscsi - enable open-iscsi
   ansible.builtin.systemd:
     enabled: true
     name: open-iscsi
   become: true
 
-- name: node - setup - iscsi - enable multipath-tools
+- name: Node - setup - iscsi - enable multipath-tools
   ansible.builtin.systemd:
     enabled: true
     name: multipath-tools.service
   become: true
 
-- name: node - setup - iscsi - start open-iscsi
+- name: Node - setup - iscsi - start open-iscsi
   ansible.builtin.service:
     name: open-iscsi
     state: started
   changed_when: false
   become: true
 
-- name: node - setup - iscsi - restart multipath-tools
+- name: Node - setup - iscsi - restart multipath-tools
   ansible.builtin.service:
     name: multipath-tools
     state: restarted
@@ -192,23 +192,23 @@
 
 # ---  Install containerd
 
-- name: node - setup - containerd - docker GPG key
+- name: Node - setup - containerd - docker GPG key
   ansible.builtin.apt_key:
     url: https://download.docker.com/linux/ubuntu/gpg
     state: present
 
-- name: node - setup - containerd - docker repository
+- name: Node - setup - containerd - docker repository
   ansible.builtin.apt_repository:
     repo: deb https://download.docker.com/linux/ubuntu bionic stable
     state: present
 
-- name: node - setup - containerd - install
+- name: Node - setup - containerd - install
   ansible.builtin.apt:
-    name: "{{ 'containerd.io' if (( containerd.version is undefined ) or ( containerd.version == None ) \
-          or ( containerd.version == 'latest' )) else 'containerd.io='+( containerd.version | string | default('') ) }}"
+    name: "{{ 'containerd.io' if ((containerd.version is undefined) or (containerd.version == None) or \
+      (containerd.version == 'latest')) else 'containerd.io=' + (containerd.version | string | default('')) }}"
   become: true
 
-- name: node - setup - containerd - modules
+- name: Node - setup - containerd - modules
   ansible.builtin.copy:
     dest: "/etc/modules-load.d/containerd.conf"
     content: |
@@ -217,7 +217,7 @@
     mode: 0644
   become: true
 
-- name: node - setup - containerd - modprobe modules
+- name: Node - setup - containerd - modprobe modules
   community.general.modprobe:
     name: "{{ item }}"
     state: present
@@ -226,7 +226,7 @@
     - br_netfilter
   become: true
 
-- name: node - setup - containerd - systctl fixes
+- name: Node - setup - containerd - systctl fixes
   ansible.builtin.copy:
     dest: "/etc/sysctl.d/kubernetes.conf"
     content: |
@@ -236,31 +236,31 @@
     mode: 0644
   become: true
 
-- name: node - setup - containerd - systctl register
+- name: Node - setup - containerd - systctl register
   ansible.builtin.command: sysctl --system
   changed_when: false
   become: true
 
-- name: node - setup - containerd - directory
+- name: Node - setup - containerd - directory
   ansible.builtin.file:
     path: /etc/containerd
     state: directory
     mode: 0755
   become: true
 
-- name: node - setup - containerd - load containerd default config
+- name: Node - setup - containerd - load containerd default config
   ansible.builtin.command: "containerd config default"
   register: containerd_config_default
   changed_when: false
 
-- name: node - setup - containerd - write containerd default config to disk
+- name: Node - setup - containerd - write containerd default config to disk
   ansible.builtin.copy:
     dest: "/etc/containerd/config.toml.default"
     content: "{{ containerd_config_default.stdout }}"
     mode: 0644
   changed_when: false
 
-- name: node - setup - containerd - write containerd kubernetes config template to disk
+- name: Node - setup - containerd - write containerd kubernetes config template to disk
   ansible.builtin.copy:
     src: "/etc/containerd/config.toml.default"
     remote_src: true
@@ -269,7 +269,7 @@
   changed_when: false
   become: true
 
-- name: node - setup - containerd - enable SystemdCgroup in kubernetes config template
+- name: Node - setup - containerd - enable SystemdCgroup in kubernetes config template
   ansible.builtin.lineinfile:
     path: /etc/containerd/config.toml.default_kubernetes
     regexp: "^(.*)SystemdCgroup(.*)$"
@@ -279,7 +279,7 @@
   changed_when: false
   become: true
 
-- name: node - setup - containerd - apply containerd kubernetes config
+- name: Node - setup - containerd - apply containerd kubernetes config
   ansible.builtin.copy:
     src: "/etc/containerd/config.toml.default_kubernetes"
     remote_src: true
@@ -287,28 +287,28 @@
     mode: 0644
   become: true
 
-- name: node - setup - containerd - restart containerd
+- name: Node - setup - containerd - restart containerd
   ansible.builtin.systemd:
     state: restarted
     name: containerd
   changed_when: false
   become: true
 
-- name: node - setup - containerd - crictl - download
+- name: Node - setup - containerd - crictl - download
   ansible.builtin.get_url:
     url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/\
           v{{ containerd.crictl.version }}/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
     dest: "/tmp/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
     mode: 0644
 
-- name: node - setup - containerd - crictl - extract
+- name: Node - setup - containerd - crictl - extract
   ansible.builtin.unarchive:
     src: "/tmp/crictl-v{{ containerd.crictl.version }}-linux-amd64.tar.gz"
     dest: "/usr/local/bin"
     mode: +x
     remote_src: true
 
-- name: node - setup - containerd - crictl - get containerd info
+- name: Node - setup - containerd - crictl - get containerd info
   ansible.builtin.command: crictl --debug -r unix:///run/containerd/containerd.sock info
   register: results
   changed_when: false
