@@ -2,6 +2,7 @@
 skip_list:
   - meta-no-info
   - no-handler
+  - risky-shell-pipe
 
 exclude_paths:
   - playbooks/debug.yml

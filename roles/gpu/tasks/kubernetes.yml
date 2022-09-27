@@ -12,9 +12,15 @@
     state: present
   when: nvidia_gpu_check.rc == 0
   delegate_to: "{{ item }}"
+  register: _gpu_host
   with_items: '{{ groups.primary_control_plane }}'
 
-- name: kubernetes - restart - gpu operator toolkit daemonset pods
+- name: os - add host to group
+  ansible.builtin.group_by:
+    key: gpu_installed
+  when: _gpu_host.changed
+  
+- name: kubernetes - control-plane - restart gpu operator toolkit daemonset pods
   kubernetes.core.k8s:
     api_version: v1
     kind: Pod
@@ -22,4 +28,7 @@
     label_selectors:
       - 'app=nvidia-container-toolkit-daemonset'
     state: absent
-  when: inventory_hostname in groups['primary_control_plane']
+  when: groups.gpu_installed is defined
+  run_once: true
+  delegate_to: "{{ item }}"
+  with_items: '{{ groups.primary_control_plane }}'

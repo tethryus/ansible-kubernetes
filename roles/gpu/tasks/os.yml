@@ -5,19 +5,19 @@
     name: python3-pip
   become: true
 
-- name: os - install kubernetes python dependency
+- name: os - control-plane - install kubernetes python dependency
   ansible.builtin.pip:
     name: kubernetes
   become: true
   when: inventory_hostname in groups['primary_control_plane']
 
-- name: node - setup - check if nvidia GPU present
-  ansible.builtin.command: lspci -nn | grep -i nvidia
+- name: setup - node - check if nvidia GPU present
+  ansible.builtin.shell: lspci -nn | grep -i nvidia
   changed_when: false
   failed_when: false
   register: nvidia_gpu_check
 
-- name: node - setup - install nvidia drivers if detected on host
+- name: setup - node - install nvidia drivers if detected on host
   ansible.builtin.apt:
     package: "{{ nvidia_drivers }}"
     install_recommends: false
