@@ -8,23 +8,6 @@
     update_cache: true
   become: true
 
-- name: node - setup - check if nvidia GPU present
-  ansible.builtin.shell: lspci -nn | grep -i nvidia
-  changed_when: false
-  failed_when: false
-  register: nvidia_gpu_check
-
-- name: debug nvidia_gpu_check
-  debug: 
-   var: nvidia_gpu_check.rc
-
-- name: node - setup - install nvidia drivers if detected on host
-  ansible.builtin.apt:
-    package: "{{ nvidia_drivers }}"
-    install_recommends: false
-  become: true
-  when: nvidia_gpu_check.rc == 0
-
 # --------- Setup Time
 - name: node - setup - time - set timezone
   ansible.builtin.timezone:

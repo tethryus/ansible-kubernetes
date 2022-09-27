@@ -14,8 +14,8 @@
     - role: replica
       tags: replica
 
-- name: Master - Restart gpu operator
-  hosts: primary_control_plane
+- name: Replica - Configure gpu operator
+  hosts: kubernetes
   gather_facts: false
   roles:
     - role: gpu

@@ -13,7 +13,7 @@ containerd:
     version: 1.25.0
 
 iscsi:
-  initiator_name: "iqn.1987-02.ro.drc"
+  initiator_name: "changeme"
 
 nvidia_drivers:
   - nvidia-headless-510 
