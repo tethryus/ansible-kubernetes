@@ -41,7 +41,7 @@
   become: true
 
 - name: Node - setup - remove swap from fstab
-  mount:
+  ansible.builtin.mount:
     name: "{{ item }}"
     fstype: swap
     state: absent

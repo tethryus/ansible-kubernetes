@@ -1,4 +1,6 @@
 ---
 
-- import_tasks: os.yml
-- import_tasks: kubernetes.yml
+- name: Configure common packages
+  ansible.builtin.import_tasks: os.yml
+- name: Configure kubernetes packages
+  ansible.builtin.import_tasks: kubernetes.yml

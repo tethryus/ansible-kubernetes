@@ -1,4 +1,6 @@
 ---
 
-- import_tasks: os.yml
-- import_tasks: kubernetes.yml
+- name: Configure gpu dependencies
+  ansible.builtin.import_tasks: os.yml
+- name: Configure kubernetes hosts
+  ansible.builtin.import_tasks: kubernetes.yml
