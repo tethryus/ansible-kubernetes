@@ -35,5 +35,5 @@ jobs:
 
       - name: Archive tagged commit
         uses: actions/upload-artifact@v3
-        with: 
+        with:
           name: ansible-kubernetes
