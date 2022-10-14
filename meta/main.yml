@@ -1,0 +1,9 @@
+---
+
+dependencies: []
+
+galaxy_info:
+  author: tethryus
+  description: Kubernetes cluster setup with Nvidia GPU support.
+  min_ansible_version: "2.4"
+  license: "license (BSD, MIT)"

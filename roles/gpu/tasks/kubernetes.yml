@@ -32,3 +32,16 @@
   run_once: true
   delegate_to: "{{ item }}"
   with_items: '{{ groups.primary_control_plane }}'
+
+- name: Kubernetes - control-plane - restart gpu operator toolkit daemonset pods
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Pod
+    namespace: core
+    label_selectors:
+      - 'nvidia.com/gpu.deploy.driver=pre-installed'
+    state: absent
+  when: groups.gpu_installed is defined
+  run_once: true
+  delegate_to: "{{ item }}"
+  with_items: '{{ groups.primary_control_plane }}'

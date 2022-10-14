@@ -86,6 +86,26 @@
     - software-properties-common
   become: true
 
+- name: Node - setup - uninstall snapd
+  become: true
+  ansible.builtin.apt:
+    pkg:
+      - snapd
+      - gnome-software-plugin-snap
+    state: absent
+    purge: true
+
+- name: Node - setup - remove user snap directory
+  ansible.builtin.file:
+    path: ~{{ ansible_facts.user_id }}/snap
+    state: absent
+
+- name: Node - setup -remove cache directory for snap
+  become: true
+  ansible.builtin.file:
+    path: /var/cache/snapd
+    state: absent
+
 # --- Install ISCSI software
 
 - name: Node - setup - iscsi - install tool
