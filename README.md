@@ -2,6 +2,8 @@
 
 This playbook installs and configures Kubernetes with GPU support.
 
+[![Lint](https://github.com/tethryus/ansible-kubernetes/actions/workflows/lint.yml/badge.svg)](https://github.com/tethryus/ansible-kubernetes/actions/workflows/lint.yml)
+
 # Prerequisites
 
 You should have [Ansible](https://github.com/ansible/ansible) installed on a the system that will run the playbook.
