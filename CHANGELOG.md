@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.1.0]() - 2022-10-16
+
+<small>[Compare with 0.0.3]()</small>
+
+### Added
+- Added changelog support ([84a39ab](ssh://git@gitea.tethryus.ro:222/tethryus/ansible-kubernetes/commit/84a39ab04d5f6003e54bb68efd561b0fafb37de3) by tethryus).
+
+
 ## [0.0.3]() - 2022-10-14
 
 <small>[Compare with 0.0.2]()</small>
