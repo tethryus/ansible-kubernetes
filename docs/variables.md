@@ -33,7 +33,7 @@
     - Example: `false`
   - `control_plane`
     - `endpoint`
-      - Example: kubernetes.groot.tethryus.ro:6443
+      - Example: "changeme:6443"
     - `lb_cidr` 
       - Example: "10.69.64.0/18"
     - `pod_network_cidr` 
